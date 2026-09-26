@@ -1,0 +1,159 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>NMinhKey Panel</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:#0d0d0d;color:#e0e0e0;font-family:monospace;padding:16px}
+h2{color:#0f0;margin-bottom:16px;font-size:16px}
+input,select{background:#111;border:1px solid #333;color:#fff;padding:8px;margin:4px 0;border-radius:4px;width:100%;font-size:13px}
+button{background:#1a1a1a;border:1px solid #444;color:#0f0;padding:10px;cursor:pointer;border-radius:4px;width:100%;font-size:13px;margin:4px 0}
+button:active{background:#222}
+.card{background:#111;border:1px solid #222;border-radius:8px;padding:12px;margin-bottom:12px}
+.label{font-size:11px;color:#666;margin-bottom:4px}
+.key-row{background:#0d0d0d;border:1px solid #222;border-radius:6px;padding:10px;margin:6px 0}
+.key-name{color:#0f0;font-size:13px;word-break:break-all}
+.key-info{font-size:11px;color:#666;margin-top:4px}
+.valid{color:#0f0}.expired{color:#f44}.disabled{color:#fa0}
+.row{display:flex;gap:6px;margin-top:8px}
+.row button{flex:1;padding:7px;font-size:11px}
+.del{color:#f44;border-color:#f44}
+.toggle{color:#fa0;border-color:#fa0}
+.ext{color:#08f;border-color:#08f}
+#status{color:#fa0;font-size:12px;margin:8px 0;min-height:18px}
+hr{border:none;border-top:1px solid #222;margin:12px 0}
+</style>
+</head>
+<body>
+
+<h2>🔑 NMINH KEY PANEL</h2>
+
+<div class="card">
+  <div class="label">WORKER URL</div>
+  <input id="apiUrl" value="https://nminh-key.nguyenquangminh24122010.workers.dev" />
+  <div class="label" style="margin-top:8px">ADMIN TOKEN</div>
+  <input id="token" type="password" placeholder="ADMIN_PASS_123" />
+</div>
+
+<div class="card">
+  <div class="label">TẠO KEY MỚI</div>
+  <input id="customKey" placeholder="Custom key (để trống = tự tạo)" />
+  <input id="days" type="number" value="30" placeholder="Số ngày" />
+  <input id="note" placeholder="Ghi chú" />
+  <button onclick="createKey()">➕ TẠO KEY</button>
+</div>
+
+<div id="status"></div>
+
+<button onclick="loadKeys()" style="margin-bottom:12px">🔄 TẢI DANH SÁCH KEY</button>
+
+<div id="keyList"></div>
+
+<script>
+function api(){ return document.getElementById('apiUrl').value.replace(/\/$/,'') }
+function tok(){ return document.getElementById('token').value }
+function status(msg,c){ var s=document.getElementById('status'); s.textContent=msg; s.style.color=c||'#fa0' }
+
+async function createKey(){
+  status('Đang tạo...')
+  try{
+    const r = await fetch(api()+'/admin',{
+      method:'POST',
+      headers:{'Content-Type':'application/json','x-admin-token':tok()},
+      body: JSON.stringify({
+        action:'create',
+        key: document.getElementById('customKey').value||undefined,
+        days: parseInt(document.getElementById('days').value)||30,
+        note: document.getElementById('note').value
+      })
+    })
+    const d = await r.json()
+    if(d.success){
+      status('✅ Tạo xong: '+d.key,'#0f0')
+      document.getElementById('customKey').value=''
+      document.getElementById('note').value=''
+      loadKeys()
+    } else status('❌ '+JSON.stringify(d),'#f44')
+  }catch(e){ status('❌ Lỗi: '+e.message,'#f44') }
+}
+
+async function loadKeys(){
+  status('Đang tải...')
+  try{
+    const r = await fetch(api()+'/admin',{
+      method:'POST',
+      headers:{'Content-Type':'application/json','x-admin-token':tok()},
+      body: JSON.stringify({action:'list'})
+    })
+    const d = await r.json()
+    if(d.error){ status('❌ '+d.error,'#f44'); return }
+    status('')
+    const keys = d.keys||{}
+    const list = document.getElementById('keyList')
+    const now = Math.floor(Date.now()/1000)
+    const entries = Object.entries(keys)
+    if(!entries.length){ list.innerHTML='<div style="color:#666;font-size:13px">Chưa có key nào.</div>'; return }
+    list.innerHTML = entries.map(([k,v])=>{
+      const exp = new Date(v.expires_at*1000).toLocaleDateString('vi-VN')
+      const expired = v.expires_at < now
+      const statusClass = !v.valid?'disabled':expired?'expired':'valid'
+      const statusText = !v.valid?'⛔ TẮT':expired?'❌ HẾT HẠN':'✅ HOẠT ĐỘNG'
+      return `<div class="key-row">
+        <div class="key-name">${k}</div>
+        <div class="key-info">
+          <span class="${statusClass}">${statusText}</span> · 
+          Hết hạn: ${exp} · 
+          ${v.note?'📝 '+v.note:''}
+        </div>
+        <div class="row">
+          <button class="ext" onclick="extendKey('${k}')">⏱ Gia hạn</button>
+          <button class="toggle" onclick="toggleKey('${k}')">${v.valid?'⛔ Tắt':'✅ Bật'}</button>
+          <button class="del" onclick="deleteKey('${k}')">🗑 Xóa</button>
+        </div>
+      </div>`
+    }).join('')
+  }catch(e){ status('❌ Lỗi: '+e.message,'#f44') }
+}
+
+async function deleteKey(key){
+  if(!confirm('Xóa key: '+key+'?')) return
+  status('Đang xóa...')
+  const r = await fetch(api()+'/admin',{
+    method:'POST',
+    headers:{'Content-Type':'application/json','x-admin-token':tok()},
+    body: JSON.stringify({action:'delete',key})
+  })
+  const d = await r.json()
+  if(d.success){ status('🗑 Đã xóa','#fa0'); loadKeys() }
+  else status('❌ '+JSON.stringify(d),'#f44')
+}
+
+async function toggleKey(key){
+  status('Đang cập nhật...')
+  const r = await fetch(api()+'/admin',{
+    method:'POST',
+    headers:{'Content-Type':'application/json','x-admin-token':tok()},
+    body: JSON.stringify({action:'toggle',key})
+  })
+  const d = await r.json()
+  if(d.success){ status('✅ Đã cập nhật','#0f0'); loadKeys() }
+  else status('❌ '+JSON.stringify(d),'#f44')
+}
+
+async function extendKey(key){
+  const days = prompt('Gia hạn thêm bao nhiêu ngày?','30')
+  if(!days) return
+  status('Đang gia hạn...')
+  const r = await fetch(api()+'/admin',{
+    method:'POST',
+    headers:{'Content-Type':'application/json','x-admin-token':tok()},
+    body: JSON.stringify({action:'extend',key,days:parseInt(days)})
+  })
+  const d = await r.json()
+  if(d.success){ status('✅ Gia hạn xong','#0f0'); loadKeys() }
+  else status('❌ '+JSON.stringify(d),'#f44')
+}
+</script>
+</body>
+</html>
