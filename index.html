@@ -1,159 +1,27 @@
-<!DOCTYPE html>
-<html>
-<head>
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>NMinhKey Panel</title>
+<!doctype html>
+<html lang="vi"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1"><title>NMINHIOS KEY ADMIN</title>
 <style>
-*{box-sizing:border-box;margin:0;padding:0}
-body{background:#0d0d0d;color:#e0e0e0;font-family:monospace;padding:16px}
-h2{color:#0f0;margin-bottom:16px;font-size:16px}
-input,select{background:#111;border:1px solid #333;color:#fff;padding:8px;margin:4px 0;border-radius:4px;width:100%;font-size:13px}
-button{background:#1a1a1a;border:1px solid #444;color:#0f0;padding:10px;cursor:pointer;border-radius:4px;width:100%;font-size:13px;margin:4px 0}
-button:active{background:#222}
-.card{background:#111;border:1px solid #222;border-radius:8px;padding:12px;margin-bottom:12px}
-.label{font-size:11px;color:#666;margin-bottom:4px}
-.key-row{background:#0d0d0d;border:1px solid #222;border-radius:6px;padding:10px;margin:6px 0}
-.key-name{color:#0f0;font-size:13px;word-break:break-all}
-.key-info{font-size:11px;color:#666;margin-top:4px}
-.valid{color:#0f0}.expired{color:#f44}.disabled{color:#fa0}
-.row{display:flex;gap:6px;margin-top:8px}
-.row button{flex:1;padding:7px;font-size:11px}
-.del{color:#f44;border-color:#f44}
-.toggle{color:#fa0;border-color:#fa0}
-.ext{color:#08f;border-color:#08f}
-#status{color:#fa0;font-size:12px;margin:8px 0;min-height:18px}
-hr{border:none;border-top:1px solid #222;margin:12px 0}
-</style>
-</head>
-<body>
-
-<h2>🔑 NMINH KEY PANEL</h2>
-
-<div class="card">
-  <div class="label">WORKER URL</div>
-  <input id="apiUrl" value="https://nminh-key.nguyenquangminh24122010.workers.dev" />
-  <div class="label" style="margin-top:8px">ADMIN TOKEN</div>
-  <input id="token" type="password" placeholder="ADMIN_PASS_123" />
+*{box-sizing:border-box}body{margin:0;background:#08090d;color:#f5f5f5;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Arial,sans-serif}.wrap{max-width:760px;margin:auto;padding:18px}h1{font-size:24px;margin:4px 0 6px}.sub{color:#8f96a3;font-size:13px;margin-bottom:18px}.card{background:#11141a;border:1px solid #242936;border-radius:16px;padding:16px;margin-bottom:14px}label{display:block;color:#aeb5c2;font-size:13px;margin:12px 0 6px}input,select,button{width:100%;border-radius:10px;border:1px solid #303644;background:#0b0e13;color:#fff;padding:12px;font-size:15px}input:focus,select:focus{outline:none;border-color:#777}.grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}button{cursor:pointer;font-weight:700;background:#fff;color:#08090d;border:0;margin-top:10px}button.secondary{background:#202631;color:#fff}button.danger{background:#c93636;color:#fff}button.green{background:#3aa76d;color:#fff}button.orange{background:#c98532;color:#fff}.status{white-space:pre-wrap;word-break:break-word;background:#090b0f;border:1px solid #252a34;border-radius:10px;padding:12px;font-size:12px;min-height:44px}.keyrow{display:flex;gap:8px;align-items:center;border-top:1px solid #242936;padding:10px 0}.keyrow:first-child{border-top:0}.key{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:13px;word-break:break-all;flex:1}.badge{font-size:11px;padding:4px 7px;border-radius:999px;background:#252a34;color:#ddd}.copy{width:auto;margin:0;padding:8px 10px;background:#252a34;color:#fff}@media(max-width:560px){.grid{grid-template-columns:1fr}}
+</style></head><body><div class="wrap">
+<h1>🔐 NMINHIOS KEY ADMIN</h1><div class="sub">Quản lý mã • Cloudflare Worker + Firebase</div>
+<div class="card"><label>Địa chỉ máy chủ</label><input id="api" value="https://nminhios-key.nguyenquangminh24122010.workers.dev">
+<label>Mã quản trị</label><input id="secret" type="password" placeholder="Nhập mã quản trị">
+<div class="grid"><div><label>Thời hạn sử dụng</label><input id="duration" type="number" min="0" value="30"></div><div><label>Đơn vị thời gian</label><select id="unit"><option value="days">Ngày</option><option value="hours">Giờ</option><option value="weeks">Tuần</option><option value="months">Tháng</option><option value="permanent">Vĩnh viễn</option></select></div></div>
+<label>Số lượng mã</label><input id="count" type="number" min="1" max="100" value="1">
+<label>HWID (không bắt buộc)</label><input id="hwid" placeholder="Để trống nếu muốn gắn HWID lần đầu sử dụng"><button onclick="createKeys()">TẠO MÃ</button></div>
+<div class="card"><label>Mã cần thao tác</label><input id="actionKey" placeholder="KEY-XXXXXXXX">
+<div class="grid"><button class="danger" onclick="action('disable')">KHÓA MÃ</button><button class="green" onclick="action('enable')">MỞ KHÓA MÃ</button><button class="orange" onclick="action('extend')">GIA HẠN MÃ</button><button class="secondary" onclick="action('reset-hwid')">ĐẶT LẠI HWID</button></div>
+<label>Thời gian gia hạn</label><div class="grid"><input id="extendDuration" type="number" min="1" value="30"><select id="extendUnit"><option value="days">Ngày</option><option value="hours">Giờ</option><option value="weeks">Tuần</option><option value="months">Tháng</option></select></div></div>
+<div class="card"><button class="secondary" onclick="getKeys()">🔄 TẢI LẠI DANH SÁCH</button><label>Kết quả</label><div id="status" class="status">Chưa thực hiện thao tác nào.</div><div id="keys"></div></div>
 </div>
-
-<div class="card">
-  <div class="label">TẠO KEY MỚI</div>
-  <input id="customKey" placeholder="Custom key (để trống = tự tạo)" />
-  <input id="days" type="number" value="30" placeholder="Số ngày" />
-  <input id="note" placeholder="Ghi chú" />
-  <button onclick="createKey()">➕ TẠO KEY</button>
-</div>
-
-<div id="status"></div>
-
-<button onclick="loadKeys()" style="margin-bottom:12px">🔄 TẢI DANH SÁCH KEY</button>
-
-<div id="keyList"></div>
-
 <script>
-function api(){ return document.getElementById('apiUrl').value.replace(/\/$/,'') }
-function tok(){ return document.getElementById('token').value }
-function status(msg,c){ var s=document.getElementById('status'); s.textContent=msg; s.style.color=c||'#fa0' }
-
-async function createKey(){
-  status('Đang tạo...')
-  try{
-    const r = await fetch(api()+'/admin',{
-      method:'POST',
-      headers:{'Content-Type':'application/json','x-admin-token':tok()},
-      body: JSON.stringify({
-        action:'create',
-        key: document.getElementById('customKey').value||undefined,
-        days: parseInt(document.getElementById('days').value)||30,
-        note: document.getElementById('note').value
-      })
-    })
-    const d = await r.json()
-    if(d.success){
-      status('✅ Tạo xong: '+d.key,'#0f0')
-      document.getElementById('customKey').value=''
-      document.getElementById('note').value=''
-      loadKeys()
-    } else status('❌ '+JSON.stringify(d),'#f44')
-  }catch(e){ status('❌ Lỗi: '+e.message,'#f44') }
-}
-
-async function loadKeys(){
-  status('Đang tải...')
-  try{
-    const r = await fetch(api()+'/admin',{
-      method:'POST',
-      headers:{'Content-Type':'application/json','x-admin-token':tok()},
-      body: JSON.stringify({action:'list'})
-    })
-    const d = await r.json()
-    if(d.error){ status('❌ '+d.error,'#f44'); return }
-    status('')
-    const keys = d.keys||{}
-    const list = document.getElementById('keyList')
-    const now = Math.floor(Date.now()/1000)
-    const entries = Object.entries(keys)
-    if(!entries.length){ list.innerHTML='<div style="color:#666;font-size:13px">Chưa có key nào.</div>'; return }
-    list.innerHTML = entries.map(([k,v])=>{
-      const exp = new Date(v.expires_at*1000).toLocaleDateString('vi-VN')
-      const expired = v.expires_at < now
-      const statusClass = !v.valid?'disabled':expired?'expired':'valid'
-      const statusText = !v.valid?'⛔ TẮT':expired?'❌ HẾT HẠN':'✅ HOẠT ĐỘNG'
-      return `<div class="key-row">
-        <div class="key-name">${k}</div>
-        <div class="key-info">
-          <span class="${statusClass}">${statusText}</span> · 
-          Hết hạn: ${exp} · 
-          ${v.note?'📝 '+v.note:''}
-        </div>
-        <div class="row">
-          <button class="ext" onclick="extendKey('${k}')">⏱ Gia hạn</button>
-          <button class="toggle" onclick="toggleKey('${k}')">${v.valid?'⛔ Tắt':'✅ Bật'}</button>
-          <button class="del" onclick="deleteKey('${k}')">🗑 Xóa</button>
-        </div>
-      </div>`
-    }).join('')
-  }catch(e){ status('❌ Lỗi: '+e.message,'#f44') }
-}
-
-async function deleteKey(key){
-  if(!confirm('Xóa key: '+key+'?')) return
-  status('Đang xóa...')
-  const r = await fetch(api()+'/admin',{
-    method:'POST',
-    headers:{'Content-Type':'application/json','x-admin-token':tok()},
-    body: JSON.stringify({action:'delete',key})
-  })
-  const d = await r.json()
-  if(d.success){ status('🗑 Đã xóa','#fa0'); loadKeys() }
-  else status('❌ '+JSON.stringify(d),'#f44')
-}
-
-async function toggleKey(key){
-  status('Đang cập nhật...')
-  const r = await fetch(api()+'/admin',{
-    method:'POST',
-    headers:{'Content-Type':'application/json','x-admin-token':tok()},
-    body: JSON.stringify({action:'toggle',key})
-  })
-  const d = await r.json()
-  if(d.success){ status('✅ Đã cập nhật','#0f0'); loadKeys() }
-  else status('❌ '+JSON.stringify(d),'#f44')
-}
-
-async function extendKey(key){
-  const days = prompt('Gia hạn thêm bao nhiêu ngày?','30')
-  if(!days) return
-  status('Đang gia hạn...')
-  const r = await fetch(api()+'/admin',{
-    method:'POST',
-    headers:{'Content-Type':'application/json','x-admin-token':tok()},
-    body: JSON.stringify({action:'extend',key,days:parseInt(days)})
-  })
-  const d = await r.json()
-  if(d.success){ status('✅ Gia hạn xong','#0f0'); loadKeys() }
-  else status('❌ '+JSON.stringify(d),'#f44')
-}
-</script>
-</body>
-</html>
+const $=id=>document.getElementById(id);
+function base(){return $('api').value.trim().replace(/\/+$/,'')}
+function auth(){return {'Content-Type':'application/json','Authorization':'Bearer '+$('secret').value.trim()}}
+function show(x){$('status').textContent=typeof x==='string'?x:JSON.stringify(x,null,2)}
+async function post(path,body){try{const r=await fetch(base()+path,{method:'POST',headers:auth(),body:JSON.stringify(body)});const t=await r.text();let d;try{d=JSON.parse(t)}catch{d={http_status:r.status,raw:t}}show(d);return d}catch(e){show({error:'LỖI KẾT NỐI',message:e.message})}}
+async function createKeys(){let u=$('unit').value,d=u==='permanent'?0:Number($('duration').value)||0,c=Math.max(1,Math.min(100,Number($('count').value)||1));let b={duration:d,count:c,unit:u};let h=$('hwid').value.trim();if(h)b.hwid=h;let dta=await post('/admin/create',b);render(dta&&(dta.keys||dta.created)||[])}
+async function action(type){let k=$('actionKey').value.trim();if(!k){show('Vui lòng nhập mã.');return}let b={key:k};if(type==='extend'){b.duration=Number($('extendDuration').value)||1;b.unit=$('extendUnit').value}await post('/admin/'+type,b);await getKeys()}
+async function getKeys(){try{const r=await fetch(base()+'/admin/get',{headers:{'Authorization':'Bearer '+$('secret').value.trim()}});const t=await r.text();let d;try{d=JSON.parse(t)}catch{d={http_status:r.status,raw:t}}show(d);render(d&&(d.keys||d)||[])}catch(e){show({error:'LỖI KẾT NỐI',message:e.message})}}
+function render(list){$('keys').innerHTML='';if(!Array.isArray(list))return;list.forEach(x=>{let k=typeof x==='string'?x:x.key;if(!k)return;let row=document.createElement('div');row.className='keyrow';let a=document.createElement('div');a.className='key';a.textContent=k;let b=document.createElement('span');b.className='badge';b.textContent=x.disabled?'KHÓA MÃD':'ĐANG HOẠT ĐỘNG';let c=document.createElement('button');c.className='copy';c.textContent='SAO CHÉP';c.onclick=()=>navigator.clipboard.writeText(k);row.append(a,b,c);$('keys').appendChild(row)})}
+</script></body></html>
