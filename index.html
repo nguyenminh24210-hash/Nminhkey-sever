@@ -531,7 +531,8 @@ let allKeys = [];
 
 /* ── UTILS ── */
 function base() { return $('apiUrl').value.trim().replace(/\/+$/, ''); }
-function authH() { return { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + $('secret').value.trim() }; }
+function authH()    { return { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + $('secret').value.trim() }; }
+function authGet()  { return { 'Authorization': 'Bearer ' + $('secret').value.trim() }; }
 
 let toastTimer;
 function toast(msg, type = 'info') {
@@ -582,7 +583,7 @@ document.querySelectorAll('.nav-item').forEach(el => {
 async function testConn() {
   $('connDot').className = 'conn-dot';
   try {
-    const r = await fetch(base() + '/admin/get', { headers: { 'Authorization': 'Bearer ' + $('secret').value.trim() } });
+    const r = await fetch(base() + '/admin/get', { headers: authGet() });
     if (r.ok || r.status === 401) {
       $('connDot').className = 'conn-dot ok';
       toast(r.ok ? 'Kết nối thành công!' : 'Sai mã quản trị.', r.ok ? 'ok' : 'err');
@@ -601,7 +602,7 @@ async function loadKeys() {
   const tbody = $('keyTbody');
   tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;padding:30px;color:var(--muted)"><div class="spin" style="margin:auto"></div></td></tr>';
   try {
-    const r = await fetch(base() + '/admin/get', { headers: { 'Authorization': 'Bearer ' + $('secret').value.trim() } });
+    const r = await fetch(base() + '/admin/get', { headers: authGet() });
     const data = await r.json();
     allKeys = Array.isArray(data) ? data : (data.keys || []);
     renderKeys(allKeys);
