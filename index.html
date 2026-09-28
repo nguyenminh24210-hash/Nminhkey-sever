@@ -1,27 +1,805 @@
 <!doctype html>
-<html lang="vi"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1"><title>NMINHIOS KEY ADMIN</title>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>NMINHIOS · Key Admin</title>
 <style>
-*{box-sizing:border-box}body{margin:0;background:#08090d;color:#f5f5f5;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Arial,sans-serif}.wrap{max-width:760px;margin:auto;padding:18px}h1{font-size:24px;margin:4px 0 6px}.sub{color:#8f96a3;font-size:13px;margin-bottom:18px}.card{background:#11141a;border:1px solid #242936;border-radius:16px;padding:16px;margin-bottom:14px}label{display:block;color:#aeb5c2;font-size:13px;margin:12px 0 6px}input,select,button{width:100%;border-radius:10px;border:1px solid #303644;background:#0b0e13;color:#fff;padding:12px;font-size:15px}input:focus,select:focus{outline:none;border-color:#777}.grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}button{cursor:pointer;font-weight:700;background:#fff;color:#08090d;border:0;margin-top:10px}button.secondary{background:#202631;color:#fff}button.danger{background:#c93636;color:#fff}button.green{background:#3aa76d;color:#fff}button.orange{background:#c98532;color:#fff}.status{white-space:pre-wrap;word-break:break-word;background:#090b0f;border:1px solid #252a34;border-radius:10px;padding:12px;font-size:12px;min-height:44px}.keyrow{display:flex;gap:8px;align-items:center;border-top:1px solid #242936;padding:10px 0}.keyrow:first-child{border-top:0}.key{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:13px;word-break:break-all;flex:1}.badge{font-size:11px;padding:4px 7px;border-radius:999px;background:#252a34;color:#ddd}.copy{width:auto;margin:0;padding:8px 10px;background:#252a34;color:#fff}@media(max-width:560px){.grid{grid-template-columns:1fr}}
-</style></head><body><div class="wrap">
-<h1>🔐 NMINHIOS KEY ADMIN</h1><div class="sub">Quản lý mã • Cloudflare Worker + Firebase</div>
-<div class="card"><label>Địa chỉ máy chủ</label><input id="api" value="https://nminhios-key.nguyenquangminh24122010.workers.dev">
-<label>Mã quản trị</label><input id="secret" type="password" placeholder="Nhập mã quản trị">
-<div class="grid"><div><label>Thời hạn sử dụng</label><input id="duration" type="number" min="0" value="30"></div><div><label>Đơn vị thời gian</label><select id="unit"><option value="days">Ngày</option><option value="hours">Giờ</option><option value="weeks">Tuần</option><option value="months">Tháng</option><option value="permanent">Vĩnh viễn</option></select></div></div>
-<label>Số lượng mã</label><input id="count" type="number" min="1" max="100" value="1">
-<label>HWID (không bắt buộc)</label><input id="hwid" placeholder="Để trống nếu muốn gắn HWID lần đầu sử dụng"><button onclick="createKeys()">TẠO MÃ</button></div>
-<div class="card"><label>Mã cần thao tác</label><input id="actionKey" placeholder="KEY-XXXXXXXX">
-<div class="grid"><button class="danger" onclick="action('disable')">KHÓA MÃ</button><button class="green" onclick="action('enable')">MỞ KHÓA MÃ</button><button class="orange" onclick="action('extend')">GIA HẠN MÃ</button><button class="secondary" onclick="action('reset-hwid')">ĐẶT LẠI HWID</button></div>
-<label>Thời gian gia hạn</label><div class="grid"><input id="extendDuration" type="number" min="1" value="30"><select id="extendUnit"><option value="days">Ngày</option><option value="hours">Giờ</option><option value="weeks">Tuần</option><option value="months">Tháng</option></select></div></div>
-<div class="card"><button class="secondary" onclick="getKeys()">🔄 TẢI LẠI DANH SÁCH</button><label>Kết quả</label><div id="status" class="status">Chưa thực hiện thao tác nào.</div><div id="keys"></div></div>
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
+
+:root {
+  --bg:       #07080c;
+  --surface:  #0e1018;
+  --border:   #1e2230;
+  --border2:  #262c3d;
+  --text:     #e8eaf0;
+  --muted:    #6b7494;
+  --accent:   #4f7fff;
+  --accent-d: #3a66e0;
+  --green:    #2ecc7a;
+  --red:      #e05555;
+  --orange:   #e09a3a;
+  --purple:   #9b6bff;
+  --mono:     'JetBrains Mono', ui-monospace, monospace;
+  --sans:     'Inter', system-ui, sans-serif;
+}
+
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--sans);
+  font-size: 14px;
+  min-height: 100vh;
+  padding-top: env(safe-area-inset-top, 0);
+  padding-bottom: env(safe-area-inset-bottom, 0);
+}
+
+/* ── LAYOUT ── */
+.shell { display: flex; min-height: 100vh; }
+
+.sidebar {
+  width: 220px;
+  flex-shrink: 0;
+  background: var(--surface);
+  border-right: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  padding: 20px 0;
+  position: fixed;
+  top: 0; left: 0; bottom: 0;
+}
+
+.logo {
+  padding: 0 20px 20px;
+  border-bottom: 1px solid var(--border);
+  margin-bottom: 16px;
+}
+.logo-mark { font-size: 18px; font-weight: 700; letter-spacing: -.5px; color: var(--text); }
+.logo-sub  { font-size: 11px; color: var(--muted); margin-top: 2px; font-family: var(--mono); }
+
+.nav-item {
+  display: flex; align-items: center; gap: 10px;
+  padding: 9px 20px;
+  color: var(--muted);
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 500;
+  border-left: 2px solid transparent;
+  transition: color .15s, background .15s, border-color .15s;
+  user-select: none;
+}
+.nav-item:hover { color: var(--text); background: rgba(255,255,255,.03); }
+.nav-item.active { color: var(--text); border-left-color: var(--accent); background: rgba(79,127,255,.07); }
+.nav-icon { font-size: 15px; width: 18px; text-align: center; }
+
+.main {
+  margin-left: 220px;
+  flex: 1;
+  padding: 28px 32px;
+  max-width: calc(100vw - 220px);
+}
+
+/* ── SECTIONS ── */
+.section { display: none; }
+.section.active { display: block; }
+
+.page-title {
+  font-size: 20px;
+  font-weight: 700;
+  margin-bottom: 4px;
+}
+.page-sub { color: var(--muted); font-size: 13px; margin-bottom: 24px; }
+
+/* ── CARDS ── */
+.card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 20px;
+  margin-bottom: 16px;
+}
+.card-title {
+  font-size: 12px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: .06em;
+  color: var(--muted);
+  margin-bottom: 16px;
+}
+
+/* ── FORM ELEMENTS ── */
+label { display: block; color: var(--muted); font-size: 12px; font-weight: 500; margin-bottom: 6px; margin-top: 14px; }
+label:first-child { margin-top: 0; }
+
+input, select, textarea {
+  width: 100%;
+  background: var(--bg);
+  border: 1px solid var(--border2);
+  border-radius: 8px;
+  color: var(--text);
+  font-family: var(--sans);
+  font-size: 13px;
+  padding: 9px 12px;
+  outline: none;
+  transition: border-color .15s;
+  appearance: none;
+}
+input:focus, select:focus, textarea:focus { border-color: var(--accent); }
+input::placeholder { color: var(--muted); }
+select { background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath d='M1 1l5 5 5-5' stroke='%236b7494' stroke-width='1.5' fill='none' stroke-linecap='round'/%3E%3C/svg%3E"); background-repeat: no-repeat; background-position: right 12px center; padding-right: 32px; }
+
+.row2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.row3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px; }
+
+/* ── BUTTONS ── */
+.btn {
+  display: inline-flex; align-items: center; justify-content: center; gap: 7px;
+  padding: 9px 16px;
+  border-radius: 8px;
+  font-family: var(--sans);
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  border: none;
+  transition: opacity .15s, transform .1s;
+  white-space: nowrap;
+}
+.btn:hover { opacity: .88; }
+.btn:active { transform: scale(.97); }
+.btn.full { width: 100%; margin-top: 16px; }
+.btn.sm { padding: 6px 10px; font-size: 12px; border-radius: 6px; }
+
+.btn-primary  { background: var(--accent);  color: #fff; }
+.btn-green    { background: var(--green);   color: #07150e; }
+.btn-red      { background: var(--red);     color: #fff; }
+.btn-orange   { background: var(--orange);  color: #0d0700; }
+.btn-ghost    { background: var(--border2); color: var(--text); }
+.btn-purple   { background: var(--purple);  color: #fff; }
+
+.btn-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 14px; }
+
+/* ── SERVER CONFIG BAR ── */
+.cfg-bar {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 12px 16px;
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  margin-bottom: 20px;
+}
+.cfg-bar input { flex: 1; margin: 0; }
+.cfg-bar .btn { flex-shrink: 0; }
+.conn-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--muted); flex-shrink: 0; transition: background .3s; }
+.conn-dot.ok { background: var(--green); }
+.conn-dot.err { background: var(--red); }
+
+/* ── TABLE ── */
+.tbl-wrap { overflow-x: auto; border-radius: 10px; border: 1px solid var(--border); }
+table { width: 100%; border-collapse: collapse; font-size: 13px; }
+thead th {
+  background: var(--surface);
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: .05em;
+  padding: 10px 14px;
+  text-align: left;
+  border-bottom: 1px solid var(--border);
+}
+tbody tr { border-bottom: 1px solid var(--border); transition: background .1s; }
+tbody tr:last-child { border-bottom: 0; }
+tbody tr:hover { background: rgba(255,255,255,.02); }
+td { padding: 10px 14px; vertical-align: middle; }
+
+.key-mono {
+  font-family: var(--mono);
+  font-size: 12px;
+  color: var(--accent);
+  cursor: pointer;
+  white-space: nowrap;
+}
+.key-mono:hover { text-decoration: underline; }
+
+.badge {
+  display: inline-block;
+  font-size: 10px;
+  font-weight: 700;
+  padding: 3px 7px;
+  border-radius: 20px;
+  text-transform: uppercase;
+  letter-spacing: .04em;
+}
+.badge-active   { background: rgba(46,204,122,.15); color: var(--green); }
+.badge-disabled { background: rgba(224,85,85,.15);  color: var(--red); }
+.badge-perm     { background: rgba(155,107,255,.15);color: var(--purple); }
+
+.td-actions { display: flex; gap: 6px; flex-wrap: wrap; }
+
+.exp-warn { color: var(--orange); }
+.exp-ok   { color: var(--muted); }
+.exp-dead { color: var(--red); }
+
+/* ── SEARCH + FILTER ── */
+.toolbar {
+  display: flex; gap: 10px; align-items: center; margin-bottom: 14px; flex-wrap: wrap;
+}
+.toolbar input { max-width: 280px; margin: 0; flex: 1 1 180px; }
+.toolbar select { width: auto; margin: 0; }
+.key-count { color: var(--muted); font-size: 12px; margin-left: auto; white-space: nowrap; }
+
+/* ── TOAST ── */
+#toast {
+  position: fixed;
+  bottom: 24px; right: 24px;
+  background: var(--surface);
+  border: 1px solid var(--border2);
+  border-radius: 10px;
+  padding: 12px 18px;
+  font-size: 13px;
+  box-shadow: 0 8px 32px rgba(0,0,0,.5);
+  z-index: 999;
+  transform: translateY(80px);
+  opacity: 0;
+  transition: transform .25s, opacity .25s;
+  max-width: 320px;
+  display: flex; align-items: center; gap: 10px;
+}
+#toast.show { transform: translateY(0); opacity: 1; }
+#toast.ok   { border-left: 3px solid var(--green); }
+#toast.err  { border-left: 3px solid var(--red); }
+#toast.info { border-left: 3px solid var(--accent); }
+
+/* ── MODAL ── */
+.overlay {
+  position: fixed; inset: 0;
+  background: rgba(0,0,0,.65);
+  display: flex; align-items: center; justify-content: center;
+  z-index: 100;
+  opacity: 0; pointer-events: none; transition: opacity .2s;
+}
+.overlay.open { opacity: 1; pointer-events: all; }
+.modal {
+  background: var(--surface);
+  border: 1px solid var(--border2);
+  border-radius: 14px;
+  padding: 24px;
+  width: 380px;
+  max-width: 90vw;
+  transform: scale(.95);
+  transition: transform .2s;
+}
+.overlay.open .modal { transform: scale(1); }
+.modal h3 { font-size: 16px; font-weight: 700; margin-bottom: 16px; }
+.modal .btn-row { display: flex; gap: 8px; margin-top: 20px; }
+.modal .btn-row .btn { flex: 1; }
+
+/* ── STATS GRID ── */
+.stats { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 12px; margin-bottom: 20px; }
+.stat {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 16px;
+}
+.stat-val { font-size: 26px; font-weight: 700; font-family: var(--mono); }
+.stat-lbl { font-size: 11px; color: var(--muted); margin-top: 4px; }
+.stat-green .stat-val { color: var(--green); }
+.stat-red   .stat-val { color: var(--red); }
+.stat-blue  .stat-val { color: var(--accent); }
+.stat-muted .stat-val { color: var(--muted); }
+
+/* ── RESPONSIVE ── */
+@media (max-width: 700px) {
+  .sidebar { width: 100%; height: auto; position: relative; flex-direction: row; flex-wrap: wrap; padding: 10px; gap: 4px; border-right: none; border-bottom: 1px solid var(--border); }
+  .logo { border: none; margin: 0; padding: 6px 8px; }
+  .nav-item { border-left: none; border-radius: 7px; padding: 7px 10px; font-size: 12px; }
+  .nav-item.active { border-bottom: 2px solid var(--accent); }
+  .main { margin-left: 0; padding: 16px; max-width: 100%; }
+  .shell { flex-direction: column; }
+  .row2, .row3 { grid-template-columns: 1fr; }
+  .cfg-bar { flex-wrap: wrap; }
+}
+
+/* ── SPINNER ── */
+@keyframes spin { to { transform: rotate(360deg); } }
+.spin { display: inline-block; width: 14px; height: 14px; border: 2px solid rgba(255,255,255,.2); border-top-color: #fff; border-radius: 50%; animation: spin .6s linear infinite; }
+
+/* ── EMPTY STATE ── */
+.empty { text-align: center; padding: 40px 20px; color: var(--muted); }
+.empty-icon { font-size: 32px; margin-bottom: 10px; }
+.empty-text { font-size: 13px; }
+</style>
+</head>
+<body>
+
+<div class="shell">
+  <!-- SIDEBAR -->
+  <nav class="sidebar">
+    <div class="logo">
+      <div class="logo-mark">🔐 NMINHIOS</div>
+      <div class="logo-sub">Key Admin v2</div>
+    </div>
+    <div class="nav-item active" data-sec="keys">
+      <span class="nav-icon">🗝</span> Danh sách Key
+    </div>
+    <div class="nav-item" data-sec="create">
+      <span class="nav-icon">✚</span> Tạo Key
+    </div>
+    <div class="nav-item" data-sec="manage">
+      <span class="nav-icon">⚙</span> Quản lý Key
+    </div>
+    <div class="nav-item" data-sec="settings">
+      <span class="nav-icon">⛭</span> Cài đặt
+    </div>
+  </nav>
+
+  <!-- MAIN -->
+  <main class="main">
+
+    <!-- SERVER BAR (always visible) -->
+    <div class="cfg-bar">
+      <div class="conn-dot" id="connDot"></div>
+      <input id="apiUrl" value="https://nminhios-key.nguyenquangminh24122010.workers.dev" placeholder="URL server...">
+      <input id="secret" type="password" placeholder="Mã quản trị" style="max-width:200px">
+      <button class="btn btn-ghost sm" onclick="testConn()">Kết nối</button>
+    </div>
+
+    <!-- ── SECTION: KEYS ── -->
+    <div class="section active" id="sec-keys">
+      <div class="page-title">Danh sách Key</div>
+      <div class="page-sub">Toàn bộ key đã tạo, trạng thái và thao tác nhanh.</div>
+
+      <div class="stats">
+        <div class="stat stat-blue">  <div class="stat-val" id="st-total">—</div><div class="stat-lbl">Tổng số key</div></div>
+        <div class="stat stat-green"> <div class="stat-val" id="st-active">—</div><div class="stat-lbl">Đang hoạt động</div></div>
+        <div class="stat stat-red">   <div class="stat-val" id="st-disabled">—</div><div class="stat-lbl">Đã khóa</div></div>
+        <div class="stat stat-muted"> <div class="stat-val" id="st-perm">—</div><div class="stat-lbl">Vĩnh viễn</div></div>
+      </div>
+
+      <div class="toolbar">
+        <input id="search" placeholder="🔍  Tìm key, HWID..." oninput="filterKeys()">
+        <select id="filterStatus" onchange="filterKeys()">
+          <option value="">Tất cả trạng thái</option>
+          <option value="active">Hoạt động</option>
+          <option value="disabled">Đã khóa</option>
+          <option value="permanent">Vĩnh viễn</option>
+        </select>
+        <button class="btn btn-ghost sm" onclick="loadKeys()">⟳ Tải lại</button>
+        <span class="key-count" id="keyCount"></span>
+      </div>
+
+      <div class="tbl-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Key</th>
+              <th>Trạng thái</th>
+              <th>Hết hạn</th>
+              <th>HWID</th>
+              <th>Thao tác</th>
+            </tr>
+          </thead>
+          <tbody id="keyTbody">
+            <tr><td colspan="5"><div class="empty"><div class="empty-icon">🔑</div><div class="empty-text">Nhấn "Tải lại" để xem danh sách key.</div></div></td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- ── SECTION: CREATE ── -->
+    <div class="section" id="sec-create">
+      <div class="page-title">Tạo Key mới</div>
+      <div class="page-sub">Tạo một hoặc nhiều key cùng lúc.</div>
+
+      <div class="card">
+        <div class="card-title">Cấu hình Key</div>
+        <div class="row2">
+          <div>
+            <label>Thời hạn</label>
+            <input id="c-duration" type="number" min="0" value="30">
+          </div>
+          <div>
+            <label>Đơn vị</label>
+            <select id="c-unit">
+              <option value="days">Ngày</option>
+              <option value="hours">Giờ</option>
+              <option value="weeks">Tuần</option>
+              <option value="months">Tháng</option>
+              <option value="permanent">Vĩnh viễn</option>
+            </select>
+          </div>
+        </div>
+        <label>Số lượng (tối đa 100)</label>
+        <input id="c-count" type="number" min="1" max="100" value="1">
+        <label>HWID (tuỳ chọn)</label>
+        <input id="c-hwid" placeholder="Để trống để gắn HWID lần đầu dùng">
+        <button class="btn btn-primary full" onclick="createKeys()">
+          <span id="c-spinner" style="display:none" class="spin"></span>
+          ✚ Tạo Key
+        </button>
+      </div>
+
+      <div class="card" id="newKeysCard" style="display:none">
+        <div class="card-title">Key vừa tạo</div>
+        <div id="newKeysList"></div>
+        <button class="btn btn-ghost full" onclick="copyAllNew()" style="margin-top:10px">📋 Sao chép tất cả</button>
+      </div>
+    </div>
+
+    <!-- ── SECTION: MANAGE ── -->
+    <div class="section" id="sec-manage">
+      <div class="page-title">Quản lý Key</div>
+      <div class="page-sub">Khóa, mở khóa, gia hạn, đặt lại HWID hoặc xóa key.</div>
+
+      <div class="card">
+        <div class="card-title">Thao tác</div>
+        <label>Key cần thao tác</label>
+        <input id="m-key" placeholder="KEY-XXXXXXXX">
+        <div class="btn-grid">
+          <button class="btn btn-green"   onclick="doAction('enable')">✓ Mở khóa</button>
+          <button class="btn btn-red"     onclick="doAction('disable')">✕ Khóa</button>
+          <button class="btn btn-orange"  onclick="openExtend()">⊕ Gia hạn</button>
+          <button class="btn btn-ghost"   onclick="doAction('reset-hwid')">↺ Đặt lại HWID</button>
+          <button class="btn btn-purple"  onclick="doAction('check')">? Kiểm tra</button>
+          <button class="btn btn-red"     onclick="confirmDelete()" style="grid-column:span 1">🗑 Xóa key</button>
+        </div>
+      </div>
+
+      <div class="card" id="manageResult" style="display:none">
+        <div class="card-title">Kết quả</div>
+        <pre id="manageResultPre" style="font-family:var(--mono);font-size:12px;white-space:pre-wrap;color:var(--text);line-height:1.6"></pre>
+      </div>
+    </div>
+
+    <!-- ── SECTION: SETTINGS ── -->
+    <div class="section" id="sec-settings">
+      <div class="page-title">Cài đặt</div>
+      <div class="page-sub">Cấu hình server và thông tin kết nối.</div>
+
+      <div class="card">
+        <div class="card-title">Server</div>
+        <label>URL Worker</label>
+        <input id="s-url" oninput="$('apiUrl').value=this.value">
+        <label>Mã quản trị</label>
+        <input id="s-secret" type="password" oninput="$('secret').value=this.value">
+        <button class="btn btn-primary full" onclick="saveSettings()">Lưu & Kiểm tra</button>
+      </div>
+
+      <div class="card">
+        <div class="card-title">Thông tin</div>
+        <div style="font-size:12px;color:var(--muted);line-height:1.8">
+          <div>Admin Panel v2.0 — NMINHIOS</div>
+          <div>Cloudflare Worker + Firebase</div>
+          <div style="margin-top:8px;font-family:var(--mono);color:var(--border2)">built clean, no frameworks</div>
+        </div>
+      </div>
+    </div>
+
+  </main>
 </div>
+
+<!-- EXTEND MODAL -->
+<div class="overlay" id="extendModal">
+  <div class="modal">
+    <h3>⊕ Gia hạn Key</h3>
+    <div class="row2">
+      <div>
+        <label>Thời gian</label>
+        <input id="e-duration" type="number" min="1" value="30">
+      </div>
+      <div>
+        <label>Đơn vị</label>
+        <select id="e-unit">
+          <option value="days">Ngày</option>
+          <option value="hours">Giờ</option>
+          <option value="weeks">Tuần</option>
+          <option value="months">Tháng</option>
+        </select>
+      </div>
+    </div>
+    <div class="btn-row">
+      <button class="btn btn-ghost" onclick="closeModal('extendModal')">Hủy</button>
+      <button class="btn btn-orange" onclick="doExtend()">Gia hạn</button>
+    </div>
+  </div>
+</div>
+
+<!-- DELETE MODAL -->
+<div class="overlay" id="deleteModal">
+  <div class="modal">
+    <h3>🗑 Xác nhận xóa</h3>
+    <p style="color:var(--muted);font-size:13px;margin-top:4px">Key này sẽ bị xóa vĩnh viễn. Không thể hoàn tác.</p>
+    <div style="margin-top:14px;background:var(--bg);border:1px solid var(--border2);border-radius:8px;padding:10px;font-family:var(--mono);font-size:12px;color:var(--red)" id="deleteKeyPreview"></div>
+    <div class="btn-row">
+      <button class="btn btn-ghost" onclick="closeModal('deleteModal')">Hủy</button>
+      <button class="btn btn-red" onclick="doDelete()">Xóa</button>
+    </div>
+  </div>
+</div>
+
+<!-- TOAST -->
+<div id="toast"></div>
+
 <script>
-const $=id=>document.getElementById(id);
-function base(){return $('api').value.trim().replace(/\/+$/,'')}
-function auth(){return {'Content-Type':'application/json','Authorization':'Bearer '+$('secret').value.trim()}}
-function show(x){$('status').textContent=typeof x==='string'?x:JSON.stringify(x,null,2)}
-async function post(path,body){try{const r=await fetch(base()+path,{method:'POST',headers:auth(),body:JSON.stringify(body)});const t=await r.text();let d;try{d=JSON.parse(t)}catch{d={http_status:r.status,raw:t}}show(d);return d}catch(e){show({error:'LỖI KẾT NỐI',message:e.message})}}
-async function createKeys(){let u=$('unit').value,d=u==='permanent'?0:Number($('duration').value)||0,c=Math.max(1,Math.min(100,Number($('count').value)||1));let b={duration:d,count:c,unit:u};let h=$('hwid').value.trim();if(h)b.hwid=h;let dta=await post('/admin/create',b);render(dta&&(dta.keys||dta.created)||[])}
-async function action(type){let k=$('actionKey').value.trim();if(!k){show('Vui lòng nhập mã.');return}let b={key:k};if(type==='extend'){b.duration=Number($('extendDuration').value)||1;b.unit=$('extendUnit').value}await post('/admin/'+type,b);await getKeys()}
-async function getKeys(){try{const r=await fetch(base()+'/admin/get',{headers:{'Authorization':'Bearer '+$('secret').value.trim()}});const t=await r.text();let d;try{d=JSON.parse(t)}catch{d={http_status:r.status,raw:t}}show(d);render(d&&(d.keys||d)||[])}catch(e){show({error:'LỖI KẾT NỐI',message:e.message})}}
-function render(list){$('keys').innerHTML='';if(!Array.isArray(list))return;list.forEach(x=>{let k=typeof x==='string'?x:x.key;if(!k)return;let row=document.createElement('div');row.className='keyrow';let a=document.createElement('div');a.className='key';a.textContent=k;let b=document.createElement('span');b.className='badge';b.textContent=x.disabled?'KHÓA MÃD':'ĐANG HOẠT ĐỘNG';let c=document.createElement('button');c.className='copy';c.textContent='SAO CHÉP';c.onclick=()=>navigator.clipboard.writeText(k);row.append(a,b,c);$('keys').appendChild(row)})}
-</script></body></html>
+const $   = id => document.getElementById(id);
+let allKeys = [];
+
+/* ── UTILS ── */
+function base() { return $('apiUrl').value.trim().replace(/\/+$/, ''); }
+function authH() { return { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + $('secret').value.trim() }; }
+
+let toastTimer;
+function toast(msg, type = 'info') {
+  const el = $('toast');
+  el.textContent = msg;
+  el.className = 'show ' + type;
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => { el.className = ''; }, 3000);
+}
+
+function openModal(id)  { $(id).classList.add('open'); }
+function closeModal(id) { $(id).classList.remove('open'); }
+
+function fmtDate(ts) {
+  if (!ts) return '—';
+  const d = new Date(typeof ts === 'number' ? ts * 1000 : ts);
+  if (isNaN(d)) return ts;
+  const now = Date.now();
+  const diff = d - now;
+  const cls  = diff < 0 ? 'exp-dead' : diff < 86400000 * 3 ? 'exp-warn' : 'exp-ok';
+  const str  = d.toLocaleDateString('vi-VN', { day:'2-digit', month:'2-digit', year:'numeric' });
+  return `<span class="${cls}">${str}</span>`;
+}
+
+function copyText(t) {
+  navigator.clipboard.writeText(t).then(() => toast('Đã sao chép!', 'ok')).catch(() => {
+    const ta = document.createElement('textarea');
+    ta.value = t; document.body.appendChild(ta); ta.select(); document.execCommand('copy');
+    document.body.removeChild(ta); toast('Đã sao chép!', 'ok');
+  });
+}
+
+/* ── NAV ── */
+document.querySelectorAll('.nav-item').forEach(el => {
+  el.addEventListener('click', () => {
+    document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+    document.querySelectorAll('.section').forEach(s => s.classList.remove('active'));
+    el.classList.add('active');
+    $('sec-' + el.dataset.sec).classList.add('active');
+    if (el.dataset.sec === 'settings') {
+      $('s-url').value    = $('apiUrl').value;
+      $('s-secret').value = $('secret').value;
+    }
+  });
+});
+
+/* ── CONNECTION TEST ── */
+async function testConn() {
+  $('connDot').className = 'conn-dot';
+  try {
+    const r = await fetch(base() + '/admin/get', { headers: { 'Authorization': 'Bearer ' + $('secret').value.trim() } });
+    if (r.ok || r.status === 401) {
+      $('connDot').className = 'conn-dot ok';
+      toast(r.ok ? 'Kết nối thành công!' : 'Sai mã quản trị.', r.ok ? 'ok' : 'err');
+    } else {
+      $('connDot').className = 'conn-dot err';
+      toast('Lỗi server: ' + r.status, 'err');
+    }
+  } catch(e) {
+    $('connDot').className = 'conn-dot err';
+    toast('Lỗi kết nối: ' + e.message, 'err');
+  }
+}
+
+/* ── LOAD KEYS ── */
+async function loadKeys() {
+  const tbody = $('keyTbody');
+  tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;padding:30px;color:var(--muted)"><div class="spin" style="margin:auto"></div></td></tr>';
+  try {
+    const r = await fetch(base() + '/admin/get', { headers: { 'Authorization': 'Bearer ' + $('secret').value.trim() } });
+    const data = await r.json();
+    allKeys = Array.isArray(data) ? data : (data.keys || []);
+    renderKeys(allKeys);
+    updateStats(allKeys);
+    toast('Đã tải ' + allKeys.length + ' key', 'ok');
+  } catch(e) {
+    tbody.innerHTML = '<tr><td colspan="5"><div class="empty"><div class="empty-icon">⚠</div><div class="empty-text">Lỗi: ' + e.message + '</div></div></td></tr>';
+    toast('Lỗi tải key: ' + e.message, 'err');
+  }
+}
+
+function updateStats(list) {
+  const active   = list.filter(k => !k.disabled).length;
+  const disabled = list.filter(k => k.disabled).length;
+  const perm     = list.filter(k => !k.expires && !k.expiry).length;
+  $('st-total').textContent    = list.length;
+  $('st-active').textContent   = active;
+  $('st-disabled').textContent = disabled;
+  $('st-perm').textContent     = perm;
+}
+
+function renderKeys(list) {
+  const tbody = $('keyTbody');
+  $('keyCount').textContent = list.length + ' key';
+  if (!list.length) {
+    tbody.innerHTML = '<tr><td colspan="5"><div class="empty"><div class="empty-icon">🔑</div><div class="empty-text">Không có key nào.</div></div></td></tr>';
+    return;
+  }
+  tbody.innerHTML = list.map(k => {
+    const key     = typeof k === 'string' ? k : k.key;
+    const dis     = k.disabled;
+    const exp     = k.expires || k.expiry || k.expiresAt;
+    const perm    = !exp;
+    const hwid    = k.hwid || k.HWID || '—';
+    const badgeCls = dis ? 'badge-disabled' : perm ? 'badge-perm' : 'badge-active';
+    const badgeTxt = dis ? 'Khóa' : perm ? 'Vĩnh viễn' : 'Hoạt động';
+    const expHtml  = perm ? '<span class="badge badge-perm">∞</span>' : fmtDate(exp);
+    return `<tr>
+      <td><span class="key-mono" title="Nhấn để sao chép" onclick="copyText('${key}')">${key}</span></td>
+      <td><span class="badge ${badgeCls}">${badgeTxt}</span></td>
+      <td>${expHtml}</td>
+      <td style="font-family:var(--mono);font-size:11px;color:var(--muted);max-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${hwid}">${hwid}</td>
+      <td>
+        <div class="td-actions">
+          <button class="btn btn-ghost sm" onclick="quickCopy('${key}')">📋</button>
+          <button class="btn ${dis ? 'btn-green' : 'btn-ghost'} sm" onclick="quickAction('${key}','${dis ? 'enable' : 'disable'}')">${dis ? '✓' : '✕'}</button>
+          <button class="btn btn-orange sm" onclick="quickExtend('${key}')">⊕</button>
+          <button class="btn btn-red sm" onclick="quickDelete('${key}')">🗑</button>
+        </div>
+      </td>
+    </tr>`;
+  }).join('');
+}
+
+function filterKeys() {
+  const q   = $('search').value.toLowerCase();
+  const st  = $('filterStatus').value;
+  const filtered = allKeys.filter(k => {
+    const key  = (typeof k === 'string' ? k : k.key || '').toLowerCase();
+    const hwid = (k.hwid || k.HWID || '').toLowerCase();
+    const matchQ = !q || key.includes(q) || hwid.includes(q);
+    const exp = k.expires || k.expiry;
+    const perm = !exp;
+    let matchS = true;
+    if (st === 'active')   matchS = !k.disabled;
+    if (st === 'disabled') matchS = !!k.disabled;
+    if (st === 'permanent') matchS = perm && !k.disabled;
+    return matchQ && matchS;
+  });
+  renderKeys(filtered);
+}
+
+/* ── CREATE ── */
+async function createKeys() {
+  const unit = $('c-unit').value;
+  const dur  = unit === 'permanent' ? 0 : Number($('c-duration').value) || 0;
+  const cnt  = Math.min(100, Math.max(1, Number($('c-count').value) || 1));
+  const hwid = $('c-hwid').value.trim();
+  const body = { duration: dur, count: cnt, unit };
+  if (hwid) body.hwid = hwid;
+
+  $('c-spinner').style.display = 'inline-block';
+  try {
+    const r = await fetch(base() + '/admin/create', { method: 'POST', headers: authH(), body: JSON.stringify(body) });
+    const d = await r.json();
+    const keys = d.keys || d.created || [];
+    $('newKeysCard').style.display = 'block';
+    $('newKeysList').innerHTML = keys.map(k => `
+      <div style="display:flex;align-items:center;gap:8px;padding:8px 0;border-bottom:1px solid var(--border)">
+        <span class="key-mono" style="flex:1" onclick="copyText('${k}')">${k}</span>
+        <button class="btn btn-ghost sm" onclick="copyText('${k}')">📋</button>
+      </div>`).join('');
+    toast('Đã tạo ' + keys.length + ' key!', 'ok');
+    await loadKeys();
+  } catch(e) { toast('Lỗi: ' + e.message, 'err'); }
+  $('c-spinner').style.display = 'none';
+}
+
+function copyAllNew() {
+  const keys = [...document.querySelectorAll('#newKeysList .key-mono')].map(el => el.textContent).join('\n');
+  copyText(keys);
+}
+
+/* ── ACTIONS ── */
+async function post(path, body) {
+  const r = await fetch(base() + path, { method: 'POST', headers: authH(), body: JSON.stringify(body) });
+  return r.json();
+}
+
+async function doAction(type) {
+  const key = $('m-key').value.trim();
+  if (!key) { toast('Nhập key trước.', 'err'); return; }
+  try {
+    const d = await post('/admin/' + type, { key });
+    showResult(d);
+    toast('Thao tác thành công!', 'ok');
+    await loadKeys();
+  } catch(e) { toast('Lỗi: ' + e.message, 'err'); }
+}
+
+function openExtend() {
+  if (!$('m-key').value.trim()) { toast('Nhập key trước.', 'err'); return; }
+  openModal('extendModal');
+}
+
+async function doExtend() {
+  const key = $('m-key').value.trim();
+  const dur = Number($('e-duration').value) || 1;
+  const unit = $('e-unit').value;
+  closeModal('extendModal');
+  try {
+    const d = await post('/admin/extend', { key, duration: dur, unit });
+    showResult(d);
+    toast('Đã gia hạn!', 'ok');
+    await loadKeys();
+  } catch(e) { toast('Lỗi: ' + e.message, 'err'); }
+}
+
+function confirmDelete() {
+  const key = $('m-key').value.trim();
+  if (!key) { toast('Nhập key trước.', 'err'); return; }
+  $('deleteKeyPreview').textContent = key;
+  openModal('deleteModal');
+}
+
+async function doDelete() {
+  const key = $('m-key').value.trim();
+  closeModal('deleteModal');
+  try {
+    const d = await post('/admin/delete', { key });
+    showResult(d);
+    toast('Đã xóa key!', 'ok');
+    $('m-key').value = '';
+    await loadKeys();
+  } catch(e) { toast('Lỗi: ' + e.message, 'err'); }
+}
+
+function showResult(data) {
+  $('manageResult').style.display = 'block';
+  $('manageResultPre').textContent = JSON.stringify(data, null, 2);
+}
+
+/* ── QUICK ACTIONS (from table) ── */
+function quickCopy(key)   { copyText(key); }
+async function quickAction(key, type) {
+  try {
+    await post('/admin/' + type, { key });
+    toast(type === 'enable' ? 'Đã mở khóa!' : 'Đã khóa!', 'ok');
+    await loadKeys();
+  } catch(e) { toast('Lỗi: ' + e.message, 'err'); }
+}
+function quickExtend(key) {
+  $('m-key').value = key;
+  openModal('extendModal');
+  // switch to manage section
+  document.querySelector('[data-sec="manage"]').click();
+}
+function quickDelete(key) {
+  $('m-key').value = key;
+  $('deleteKeyPreview').textContent = key;
+  openModal('deleteModal');
+}
+
+/* ── SETTINGS ── */
+function saveSettings() {
+  $('apiUrl').value  = $('s-url').value;
+  $('secret').value  = $('s-secret').value;
+  testConn();
+}
+
+/* ── CLOSE MODALS ON OVERLAY CLICK ── */
+document.querySelectorAll('.overlay').forEach(el => {
+  el.addEventListener('click', e => { if (e.target === el) el.classList.remove('open'); });
+});
+
+/* ── INIT ── */
+testConn();
+loadKeys();
+</script>
+</body>
+</html>
