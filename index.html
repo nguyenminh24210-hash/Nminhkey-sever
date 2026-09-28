@@ -369,7 +369,8 @@ td { padding: 10px 14px; vertical-align: middle; }
           <option value="disabled">Đã khóa</option>
           <option value="permanent">Vĩnh viễn</option>
         </select>
-        <button class="btn btn-ghost sm" onclick="loadKeys()">⟳ Tải lại</button>
+        <button class="btn btn-ghost sm" onclick="loadKeys()">⟳ Đồng bộ</button>
+        <button class="btn btn-ghost sm" onclick="importKey()">＋ Thêm key</button>
         <span class="key-count" id="keyCount"></span>
       </div>
 
@@ -471,6 +472,12 @@ td { padding: 10px 14px; vertical-align: middle; }
       </div>
 
       <div class="card">
+
+      <div class="card">
+        <div class="card-title">Dữ liệu cục bộ</div>
+        <p style="font-size:12px;color:var(--muted);margin-bottom:12px">Key lưu trong browser vì worker không có endpoint list-all. Nhấn ⟳ Đồng bộ để cập nhật trạng thái từ server.</p>
+        <button class="btn btn-red full" onclick="clearLocalKeys()" style="margin-top:0">🗑 Xóa cache cục bộ</button>
+      </div>
         <div class="card-title">Thông tin</div>
         <div style="font-size:12px;color:var(--muted);line-height:1.8">
           <div>Admin Panel v2.0 — NMINHIOS</div>
@@ -526,13 +533,30 @@ td { padding: 10px 14px; vertical-align: middle; }
 <div id="toast"></div>
 
 <script>
-const $   = id => document.getElementById(id);
-let allKeys = [];
+const $ = id => document.getElementById(id);
 
-/* ── UTILS ── */
+// Worker API map (từ worker code thực tế):
+// GET  /           → ping
+// GET  /check?key=&hwid=  → validate key
+// POST /admin/create      → body: { key?, days }   (days=0 = vĩnh viễn)
+// POST /admin/disable     → body: { key }
+// POST /admin/enable      → body: { key }
+// POST /admin/extend      → body: { key, days }
+// POST /admin/reset-hwid  → body: { key }
+// GET  /admin/get?key=    → lấy 1 key cụ thể (BẮT BUỘC có ?key=)
+// KHÔNG có endpoint lấy toàn bộ danh sách — dùng Firebase trực tiếp
+// Key store cục bộ (vì worker không có list-all)
+let localKeys = JSON.parse(localStorage.getItem('nminhios_keys') || '[]');
+
+function saveLocal() {
+  localStorage.setItem('nminhios_keys', JSON.stringify(localKeys));
+}
+
 function base() { return $('apiUrl').value.trim().replace(/\/+$/, ''); }
-function authH()    { return { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + $('secret').value.trim() }; }
-function authGet()  { return { 'Authorization': 'Bearer ' + $('secret').value.trim() }; }
+function secret() { return $('secret').value.trim(); }
+function authH() {
+  return { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + secret() };
+}
 
 let toastTimer;
 function toast(msg, type = 'info') {
@@ -540,29 +564,41 @@ function toast(msg, type = 'info') {
   el.textContent = msg;
   el.className = 'show ' + type;
   clearTimeout(toastTimer);
-  toastTimer = setTimeout(() => { el.className = ''; }, 3000);
+  toastTimer = setTimeout(() => { el.className = ''; }, 3200);
 }
 
 function openModal(id)  { $(id).classList.add('open'); }
 function closeModal(id) { $(id).classList.remove('open'); }
 
+function unitToDays(val, unit) {
+  if (unit === 'permanent') return 0;
+  const n = Number(val) || 0;
+  if (unit === 'hours')  return Math.round(n / 24 * 10) / 10;
+  if (unit === 'weeks')  return n * 7;
+  if (unit === 'months') return n * 30;
+  return n; // days
+}
+
 function fmtDate(ts) {
-  if (!ts) return '—';
-  const d = new Date(typeof ts === 'number' ? ts * 1000 : ts);
-  if (isNaN(d)) return ts;
-  const now = Date.now();
+  if (!ts || ts === 0) return '<span class="badge badge-perm">∞</span>';
+  const d   = new Date(Number(ts) * 1000);
+  if (isNaN(d)) return '—';
+  const now  = Date.now();
   const diff = d - now;
   const cls  = diff < 0 ? 'exp-dead' : diff < 86400000 * 3 ? 'exp-warn' : 'exp-ok';
-  const str  = d.toLocaleDateString('vi-VN', { day:'2-digit', month:'2-digit', year:'numeric' });
+  const str  = d.toLocaleDateString('vi-VN', { day: '2-digit', month: '2-digit', year: 'numeric' });
   return `<span class="${cls}">${str}</span>`;
 }
 
 function copyText(t) {
-  navigator.clipboard.writeText(t).then(() => toast('Đã sao chép!', 'ok')).catch(() => {
-    const ta = document.createElement('textarea');
-    ta.value = t; document.body.appendChild(ta); ta.select(); document.execCommand('copy');
-    document.body.removeChild(ta); toast('Đã sao chép!', 'ok');
-  });
+  navigator.clipboard.writeText(t)
+    .then(() => toast('Đã sao chép!', 'ok'))
+    .catch(() => {
+      const ta = document.createElement('textarea');
+      ta.value = t; document.body.appendChild(ta); ta.select();
+      document.execCommand('copy'); document.body.removeChild(ta);
+      toast('Đã sao chép!', 'ok');
+    });
 }
 
 /* ── NAV ── */
@@ -579,45 +615,79 @@ document.querySelectorAll('.nav-item').forEach(el => {
   });
 });
 
-/* ── CONNECTION TEST ── */
+/* ── CONNECTION TEST (ping /) ── */
 async function testConn() {
   $('connDot').className = 'conn-dot';
   try {
-    const r = await fetch(base() + '/admin/get', { headers: authGet() });
-    if (r.ok || r.status === 401) {
+    const r = await fetch(base() + '/');
+    const d = await r.json();
+    if (d.ok) {
       $('connDot').className = 'conn-dot ok';
-      toast(r.ok ? 'Kết nối thành công!' : 'Sai mã quản trị.', r.ok ? 'ok' : 'err');
+      toast('Server online ✓', 'ok');
     } else {
       $('connDot').className = 'conn-dot err';
-      toast('Lỗi server: ' + r.status, 'err');
+      toast('Server trả lỗi', 'err');
     }
-  } catch(e) {
+  } catch (e) {
     $('connDot').className = 'conn-dot err';
     toast('Lỗi kết nối: ' + e.message, 'err');
   }
 }
 
-/* ── LOAD KEYS ── */
+/* ── POST helper ── */
+async function apiPost(path, body) {
+  const r = await fetch(base() + path, {
+    method: 'POST',
+    headers: authH(),
+    body: JSON.stringify(body)
+  });
+  return r.json();
+}
+
+/* ── GET KEY từ worker ── */
+async function fetchKey(key) {
+  const r = await fetch(base() + '/admin/get?key=' + encodeURIComponent(key), {
+    headers: { 'Authorization': 'Bearer ' + secret() }
+  });
+  return r.json();
+}
+
+/* ── LOAD / REFRESH danh sách (từ local store + sync từng key) ── */
 async function loadKeys() {
-  const tbody = $('keyTbody');
-  tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;padding:30px;color:var(--muted)"><div class="spin" style="margin:auto"></div></td></tr>';
-  try {
-    const r = await fetch(base() + '/admin/get', { headers: authGet() });
-    const data = await r.json();
-    allKeys = Array.isArray(data) ? data : (data.keys || []);
-    renderKeys(allKeys);
-    updateStats(allKeys);
-    toast('Đã tải ' + allKeys.length + ' key', 'ok');
-  } catch(e) {
-    tbody.innerHTML = '<tr><td colspan="5"><div class="empty"><div class="empty-icon">⚠</div><div class="empty-text">Lỗi: ' + e.message + '</div></div></td></tr>';
-    toast('Lỗi tải key: ' + e.message, 'err');
+  renderKeys(localKeys);
+  updateStats(localKeys);
+  if (!localKeys.length) {
+    toast('Chưa có key nào. Hãy tạo key trước.', 'info');
+    return;
   }
+  toast('Đang đồng bộ ' + localKeys.length + ' key...', 'info');
+  // sync trạng thái từng key từ server
+  const updated = await Promise.all(localKeys.map(async k => {
+    try {
+      const d = await fetchKey(k.key);
+      if (d.ok && d.data) {
+        return {
+          key:        k.key,
+          disabled:   d.data.disabled || false,
+          expires_at: d.data.expires_at || 0,
+          hwid:       d.data.hwid || null,
+          created_at: d.data.created_at || k.created_at || 0
+        };
+      }
+    } catch (_) {}
+    return k; // giữ nguyên nếu lỗi
+  }));
+  localKeys = updated;
+  saveLocal();
+  renderKeys(localKeys);
+  updateStats(localKeys);
+  toast('Đã đồng bộ ' + localKeys.length + ' key', 'ok');
 }
 
 function updateStats(list) {
   const active   = list.filter(k => !k.disabled).length;
   const disabled = list.filter(k => k.disabled).length;
-  const perm     = list.filter(k => !k.expires && !k.expiry).length;
+  const perm     = list.filter(k => !k.expires_at || k.expires_at === 0).length;
   $('st-total').textContent    = list.length;
   $('st-active').textContent   = active;
   $('st-disabled').textContent = disabled;
@@ -626,78 +696,85 @@ function updateStats(list) {
 
 function renderKeys(list) {
   const tbody = $('keyTbody');
-  $('keyCount').textContent = list.length + ' key';
-  if (!list.length) {
-    tbody.innerHTML = '<tr><td colspan="5"><div class="empty"><div class="empty-icon">🔑</div><div class="empty-text">Không có key nào.</div></div></td></tr>';
+  const q  = ($('search') ? $('search').value : '').toLowerCase();
+  const st = $('filterStatus') ? $('filterStatus').value : '';
+  let filtered = list.filter(k => {
+    const matchQ = !q || k.key.toLowerCase().includes(q) || (k.hwid||'').toLowerCase().includes(q);
+    const perm = !k.expires_at || k.expires_at === 0;
+    let matchS = true;
+    if (st === 'active')    matchS = !k.disabled;
+    if (st === 'disabled')  matchS = !!k.disabled;
+    if (st === 'permanent') matchS = perm && !k.disabled;
+    return matchQ && matchS;
+  });
+  $('keyCount').textContent = filtered.length + ' / ' + list.length + ' key';
+  if (!filtered.length) {
+    tbody.innerHTML = '<tr><td colspan="5"><div class="empty"><div class="empty-icon">🔑</div><div class="empty-text">' + (list.length ? 'Không khớp bộ lọc.' : 'Chưa có key. Tạo key ở tab "Tạo Key".') + '</div></div></td></tr>';
     return;
   }
-  tbody.innerHTML = list.map(k => {
-    const key     = typeof k === 'string' ? k : k.key;
-    const dis     = k.disabled;
-    const exp     = k.expires || k.expiry || k.expiresAt;
-    const perm    = !exp;
-    const hwid    = k.hwid || k.HWID || '—';
-    const badgeCls = dis ? 'badge-disabled' : perm ? 'badge-perm' : 'badge-active';
-    const badgeTxt = dis ? 'Khóa' : perm ? 'Vĩnh viễn' : 'Hoạt động';
-    const expHtml  = perm ? '<span class="badge badge-perm">∞</span>' : fmtDate(exp);
+  const now = Math.floor(Date.now() / 1000);
+  tbody.innerHTML = filtered.map(k => {
+    const perm     = !k.expires_at || k.expires_at === 0;
+    const expired  = !perm && k.expires_at < now;
+    const dis      = k.disabled;
+    const hwid     = k.hwid || '—';
+    const badgeCls = dis ? 'badge-disabled' : expired ? 'badge-disabled' : perm ? 'badge-perm' : 'badge-active';
+    const badgeTxt = dis ? 'Khóa' : expired ? 'Hết hạn' : perm ? 'Vĩnh viễn' : 'Hoạt động';
     return `<tr>
-      <td><span class="key-mono" title="Nhấn để sao chép" onclick="copyText('${key}')">${key}</span></td>
+      <td><span class="key-mono" title="Nhấn để sao chép" onclick="copyText('${k.key}')">${k.key}</span></td>
       <td><span class="badge ${badgeCls}">${badgeTxt}</span></td>
-      <td>${expHtml}</td>
-      <td style="font-family:var(--mono);font-size:11px;color:var(--muted);max-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${hwid}">${hwid}</td>
+      <td>${fmtDate(k.expires_at)}</td>
+      <td style="font-family:var(--mono);font-size:11px;color:var(--muted);max-width:130px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${hwid}">${hwid}</td>
       <td>
         <div class="td-actions">
-          <button class="btn btn-ghost sm" onclick="quickCopy('${key}')">📋</button>
-          <button class="btn ${dis ? 'btn-green' : 'btn-ghost'} sm" onclick="quickAction('${key}','${dis ? 'enable' : 'disable'}')">${dis ? '✓' : '✕'}</button>
-          <button class="btn btn-orange sm" onclick="quickExtend('${key}')">⊕</button>
-          <button class="btn btn-red sm" onclick="quickDelete('${key}')">🗑</button>
+          <button class="btn btn-ghost sm" onclick="copyText('${k.key}')">📋</button>
+          <button class="btn ${dis ? 'btn-green' : 'btn-ghost'} sm" onclick="quickToggle('${k.key}','${dis ? 'enable' : 'disable'}')">${dis ? '✓' : '✕'}</button>
+          <button class="btn btn-orange sm" onclick="quickExtend('${k.key}')">⊕</button>
+          <button class="btn btn-red sm" onclick="quickDelete('${k.key}')">🗑</button>
         </div>
       </td>
     </tr>`;
   }).join('');
 }
 
-function filterKeys() {
-  const q   = $('search').value.toLowerCase();
-  const st  = $('filterStatus').value;
-  const filtered = allKeys.filter(k => {
-    const key  = (typeof k === 'string' ? k : k.key || '').toLowerCase();
-    const hwid = (k.hwid || k.HWID || '').toLowerCase();
-    const matchQ = !q || key.includes(q) || hwid.includes(q);
-    const exp = k.expires || k.expiry;
-    const perm = !exp;
-    let matchS = true;
-    if (st === 'active')   matchS = !k.disabled;
-    if (st === 'disabled') matchS = !!k.disabled;
-    if (st === 'permanent') matchS = perm && !k.disabled;
-    return matchQ && matchS;
-  });
-  renderKeys(filtered);
-}
+function filterKeys() { renderKeys(localKeys); }
 
 /* ── CREATE ── */
 async function createKeys() {
   const unit = $('c-unit').value;
-  const dur  = unit === 'permanent' ? 0 : Number($('c-duration').value) || 0;
+  const days = unitToDays($('c-duration').value, unit);
   const cnt  = Math.min(100, Math.max(1, Number($('c-count').value) || 1));
   const hwid = $('c-hwid').value.trim();
-  const body = { duration: dur, count: cnt, unit };
-  if (hwid) body.hwid = hwid;
 
   $('c-spinner').style.display = 'inline-block';
+  const created = [];
   try {
-    const r = await fetch(base() + '/admin/create', { method: 'POST', headers: authH(), body: JSON.stringify(body) });
-    const d = await r.json();
-    const keys = d.keys || d.created || [];
+    for (let i = 0; i < cnt; i++) {
+      const body = { days };
+      if (hwid) body.hwid = hwid;
+      const d = await apiPost('/admin/create', body);
+      if (d.ok && d.key) {
+        created.push(d.key);
+        localKeys.unshift({
+          key:        d.key,
+          disabled:   false,
+          expires_at: d.expires_at || 0,
+          hwid:       hwid || null,
+          created_at: Math.floor(Date.now() / 1000)
+        });
+      }
+    }
+    saveLocal();
     $('newKeysCard').style.display = 'block';
-    $('newKeysList').innerHTML = keys.map(k => `
+    $('newKeysList').innerHTML = created.map(k => `
       <div style="display:flex;align-items:center;gap:8px;padding:8px 0;border-bottom:1px solid var(--border)">
         <span class="key-mono" style="flex:1" onclick="copyText('${k}')">${k}</span>
         <button class="btn btn-ghost sm" onclick="copyText('${k}')">📋</button>
       </div>`).join('');
-    toast('Đã tạo ' + keys.length + ' key!', 'ok');
-    await loadKeys();
-  } catch(e) { toast('Lỗi: ' + e.message, 'err'); }
+    renderKeys(localKeys);
+    updateStats(localKeys);
+    toast('Đã tạo ' + created.length + ' key!', 'ok');
+  } catch (e) { toast('Lỗi: ' + e.message, 'err'); }
   $('c-spinner').style.display = 'none';
 }
 
@@ -706,21 +783,38 @@ function copyAllNew() {
   copyText(keys);
 }
 
-/* ── ACTIONS ── */
-async function post(path, body) {
-  const r = await fetch(base() + path, { method: 'POST', headers: authH(), body: JSON.stringify(body) });
-  return r.json();
+/* ── MANAGE ACTIONS ── */
+function showResult(data) {
+  $('manageResult').style.display = 'block';
+  $('manageResultPre').textContent = JSON.stringify(data, null, 2);
 }
 
 async function doAction(type) {
   const key = $('m-key').value.trim();
   if (!key) { toast('Nhập key trước.', 'err'); return; }
   try {
-    const d = await post('/admin/' + type, { key });
+    let d;
+    if (type === 'check') {
+      const r = await fetch(base() + '/check?key=' + encodeURIComponent(key), {
+        headers: { 'Authorization': 'Bearer ' + secret() }
+      });
+      d = await r.json();
+    } else {
+      d = await apiPost('/admin/' + type, { key });
+    }
     showResult(d);
+    // update local cache
+    const idx = localKeys.findIndex(k => k.key === key);
+    if (idx !== -1) {
+      if (type === 'enable')     localKeys[idx].disabled = false;
+      if (type === 'disable')    localKeys[idx].disabled = true;
+      if (type === 'reset-hwid') localKeys[idx].hwid = null;
+      saveLocal();
+      renderKeys(localKeys);
+      updateStats(localKeys);
+    }
     toast('Thao tác thành công!', 'ok');
-    await loadKeys();
-  } catch(e) { toast('Lỗi: ' + e.message, 'err'); }
+  } catch (e) { toast('Lỗi: ' + e.message, 'err'); }
 }
 
 function openExtend() {
@@ -729,16 +823,21 @@ function openExtend() {
 }
 
 async function doExtend() {
-  const key = $('m-key').value.trim();
-  const dur = Number($('e-duration').value) || 1;
-  const unit = $('e-unit').value;
+  const key  = $('m-key').value.trim();
+  const days = unitToDays($('e-duration').value, $('e-unit').value);
   closeModal('extendModal');
   try {
-    const d = await post('/admin/extend', { key, duration: dur, unit });
+    const d = await apiPost('/admin/extend', { key, days });
     showResult(d);
+    const idx = localKeys.findIndex(k => k.key === key);
+    if (idx !== -1 && d.ok) {
+      localKeys[idx].expires_at = d.expires_at || localKeys[idx].expires_at;
+      saveLocal();
+      renderKeys(localKeys);
+      updateStats(localKeys);
+    }
     toast('Đã gia hạn!', 'ok');
-    await loadKeys();
-  } catch(e) { toast('Lỗi: ' + e.message, 'err'); }
+  } catch (e) { toast('Lỗi: ' + e.message, 'err'); }
 }
 
 function confirmDelete() {
@@ -752,38 +851,56 @@ async function doDelete() {
   const key = $('m-key').value.trim();
   closeModal('deleteModal');
   try {
-    const d = await post('/admin/delete', { key });
-    showResult(d);
-    toast('Đã xóa key!', 'ok');
+    // worker chưa có /admin/delete — xóa khỏi local + disable trên server
+    await apiPost('/admin/disable', { key });
+    localKeys = localKeys.filter(k => k.key !== key);
+    saveLocal();
+    renderKeys(localKeys);
+    updateStats(localKeys);
+    showResult({ ok: true, removed_locally: true, key });
     $('m-key').value = '';
-    await loadKeys();
-  } catch(e) { toast('Lỗi: ' + e.message, 'err'); }
+    toast('Đã xóa khỏi danh sách!', 'ok');
+  } catch (e) { toast('Lỗi: ' + e.message, 'err'); }
 }
 
-function showResult(data) {
-  $('manageResult').style.display = 'block';
-  $('manageResultPre').textContent = JSON.stringify(data, null, 2);
-}
-
-/* ── QUICK ACTIONS (from table) ── */
-function quickCopy(key)   { copyText(key); }
-async function quickAction(key, type) {
+/* ── QUICK ACTIONS từ table ── */
+async function quickToggle(key, type) {
   try {
-    await post('/admin/' + type, { key });
+    await apiPost('/admin/' + type, { key });
+    const idx = localKeys.findIndex(k => k.key === key);
+    if (idx !== -1) {
+      localKeys[idx].disabled = type === 'disable';
+      saveLocal();
+    }
+    renderKeys(localKeys);
+    updateStats(localKeys);
     toast(type === 'enable' ? 'Đã mở khóa!' : 'Đã khóa!', 'ok');
-    await loadKeys();
-  } catch(e) { toast('Lỗi: ' + e.message, 'err'); }
+  } catch (e) { toast('Lỗi: ' + e.message, 'err'); }
 }
+
 function quickExtend(key) {
   $('m-key').value = key;
-  openModal('extendModal');
-  // switch to manage section
   document.querySelector('[data-sec="manage"]').click();
+  openModal('extendModal');
 }
+
 function quickDelete(key) {
   $('m-key').value = key;
   $('deleteKeyPreview').textContent = key;
   openModal('deleteModal');
+}
+
+/* ── IMPORT KEY THỦ CÔNG ── */
+function importKey() {
+  const key = prompt('Nhập key để thêm vào danh sách:');
+  if (!key) return;
+  const trimmed = key.trim().toUpperCase();
+  if (localKeys.find(k => k.key === trimmed)) { toast('Key đã có trong danh sách.', 'err'); return; }
+  localKeys.unshift({ key: trimmed, disabled: false, expires_at: 0, hwid: null, created_at: Math.floor(Date.now()/1000) });
+  saveLocal();
+  renderKeys(localKeys);
+  updateStats(localKeys);
+  toast('Đã thêm key. Nhấn Tải lại để sync.', 'ok');
 }
 
 /* ── SETTINGS ── */
@@ -793,14 +910,24 @@ function saveSettings() {
   testConn();
 }
 
-/* ── CLOSE MODALS ON OVERLAY CLICK ── */
+function clearLocalKeys() {
+  if (!confirm('Xóa toàn bộ cache key cục bộ? (Không ảnh hưởng server)')) return;
+  localKeys = [];
+  saveLocal();
+  renderKeys(localKeys);
+  updateStats(localKeys);
+  toast('Đã xóa cache.', 'ok');
+}
+
+/* ── MODALS ── */
 document.querySelectorAll('.overlay').forEach(el => {
   el.addEventListener('click', e => { if (e.target === el) el.classList.remove('open'); });
 });
 
 /* ── INIT ── */
 testConn();
-loadKeys();
+renderKeys(localKeys);
+updateStats(localKeys);
 </script>
 </body>
 </html>
